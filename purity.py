@@ -7,14 +7,21 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from numpy import arange, histogram, log10, newaxis, ones, sort, sum as npsum
-from os.path import join
+from os import makedirs
+from os.path import isdir, join
 
-# my code
-import plottools
-plottools.update_rcParams()
+# my code - just using my preferred settings
+try:
+    import plottools
+    plottools.update_rcParams()
+except ImportError:
+    pass
 
 
 def main(maxdist=0.4*u.arcsec, plot_path='plots'):
+    # create plot folder if it doesn't exist
+    if not isdir(plot_path):
+        makedirs(plot_path)
     cosmos_galaxies = cosmos_objects(mu_class=1)
     cosmos_stars = cosmos_objects()
     cosmos = {}
@@ -29,7 +36,6 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
                   cosmos[seeing]['idec'][good[seeing]], *cosmos_stars,
                   label='stars', seeing=seeing, maxdist=maxdist,
                   fig=fig, ax=ax)[2]
-        #print('{0} stars = {1}'.format(seeing, stars[seeing]))
         galaxies[seeing] = \
             match(cosmos[seeing]['ira'][good[seeing]],
                   cosmos[seeing]['idec'][good[seeing]], *cosmos_galaxies,
@@ -44,7 +50,7 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
     print('')
     ax.axvline(log10(maxdist.value), ls='--', lw=1)
     ax.legend(loc='upper left')
-    plottools.savefig(join(plot_path, 'hist_matches.png'), fig=fig)
+    savefig(join(plot_path, 'hist_matches.png'), fig=fig)
     plot(cosmos, good, stars, galaxies, plot_path=plot_path)
     return
 
@@ -99,11 +105,11 @@ def match(ra, dec, ra_stars, dec_stars, label='stars', seeing='median',
     ax.set_xlabel('log distance to closest match (arcsec)')
     ax.set_ylabel('1+N')
     if save:
-        plottools.savefig(join(plot_path, 'hist_matches.png'), fig=fig)
+        savefig(join(plot_path, 'hist_matches.png'), fig=fig)
     return fig, ax, indices
 
 
-def plot(cosmos, good, stars, galaxies, plot_path='plots'):
+def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots'):
     """
     Plot the contamination as a function of magnitude.
     The first three arguments are dictionaries with seeing as keys
@@ -124,7 +130,7 @@ def plot(cosmos, good, stars, galaxies, plot_path='plots'):
                 label='{0} stars'.format(key))
         #ax.plot(mag, ngals/ntot, '--', label='{0} galaxies'.format(key))
         # now weighted fractions
-        weight = 1 / (cat['ishape_hsm_regauss_sigma']**2 + 0.25**2)
+        weight = 1 / (cat['ishape_hsm_regauss_sigma']**2 + rms**2)
         wtot = histogram(imag, magbins, weights=weight)[0]
         wstars = histogram(imag[stars[key]], magbins,
                            weights=weight[stars[key]])[0]
@@ -133,10 +139,46 @@ def plot(cosmos, good, stars, galaxies, plot_path='plots'):
         ax.plot(mag, wstars/wtot, 'C{0}--'.format(i),
                 label='{0} w-stars'.format(key))
     ax.legend(loc='upper center')
-    #ax.set_ylim(-0.05, 1.05)
     ax.set_xlabel('i-band magnitude')
     ax.set_ylabel('fraction of stars')
-    plottools.savefig(join(plot_path, 'purity.png'), fig=fig)
+    savefig(join(plot_path, 'purity.png'), fig=fig)
+    return
+
+
+def savefig(output, fig=None, close=True, verbose=True, tight=True,
+            tight_kwargs={'pad': 0.4}):
+    """
+    Wrapper to save figures, stolen from my own plottools
+    (https://github.com/cristobal-sifon/plottools).
+
+    Parameters
+    ----------
+        output  : str
+                  Output file name (including extension)
+
+    Optional parameters
+    -------------------
+        fig     : pyplot.figure object
+                  figure containing the plot.
+        close   : bool
+                  Whether to close the figure after saving.
+        verbose : bool
+                  Whether to print the output filename on screen
+        tight   : bool
+                  Whether to call `tight_layout()`
+        tight_kwargs : dict
+                  keyword arguments to be passed to `tight_layout()`
+
+    """
+    if fig is None:
+        fig = pylab
+    if tight:
+        fig.tight_layout(**tight_kwargs)
+    fig.savefig(output)
+    if close:
+        pylab.close()
+    if verbose:
+        print('Saved to {0}'.format(output))
     return
 
 
