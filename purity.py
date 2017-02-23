@@ -118,20 +118,23 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots'):
     magbins = arange(15, 25.1, 0.5)
     mag = (magbins[:-1]+magbins[1:]) / 2
     keys = ('best', 'median', 'worst')
+    overall = {key: 0 for key in keys}
     # bin by magnitude
     fig, ax = pylab.subplots()
     for i, key in enumerate(keys):
         cat = cosmos[key]
         imag = cat['imag_forced_cmodel'][good[key]]
         # overall ratios
-        ax.axhline(imag[stars[key]].size/imag.size, ls=':', lw=1,
-                   color='C{0}'.format(i))
+        overall[key] = imag[stars[key]].size/imag.size
+        ax.axhline(overall[key], ls=':', lw=1, color='C{0}'.format(i))
+        print('Overall purity for {0} seeing is {1:.4f}'.format(
+                key, overall[key]))
         # binned fractions
         ntot = histogram(imag, magbins)[0]
         nstars = histogram(imag[stars[key]], magbins)[0]
         ngals = histogram(imag[galaxies[key]], magbins)[0]
         ax.plot(mag, nstars/ntot, 'C{0}-'.format(i),
-                label='{0} stars'.format(key))
+                label='{0} stars (n)'.format(key))
         #ax.plot(mag, ngals/ntot, '--', label='{0} galaxies'.format(key))
         # now weighted fractions
         weight = 1 / (cat['ishape_hsm_regauss_sigma']**2 + rms**2)
@@ -141,7 +144,7 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots'):
         wgals = histogram(imag[galaxies[key]], magbins,
                           weights=weight[galaxies[key]])[0]
         ax.plot(mag, wstars/wtot, 'C{0}--'.format(i),
-                label='{0} w-stars'.format(key))
+                label='{0} stars (w)'.format(key))
     ax.legend(loc='upper center')
     ax.set_xlabel('i-band magnitude')
     ax.set_ylabel('fraction of stars')
