@@ -123,6 +123,10 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots'):
     for i, key in enumerate(keys):
         cat = cosmos[key]
         imag = cat['imag_forced_cmodel'][good[key]]
+        # overall ratios
+        ax.axhline(imag[stars[key]].size/imag.size, ls=':', lw=1,
+                   color='C{0}'.format(i))
+        # binned fractions
         ntot = histogram(imag, magbins)[0]
         nstars = histogram(imag[stars[key]], magbins)[0]
         ngals = histogram(imag[galaxies[key]], magbins)[0]
