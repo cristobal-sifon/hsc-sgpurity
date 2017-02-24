@@ -156,9 +156,10 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
         # Poisson errorbars
         err = 1 / nstars**0.5 / ntot
         if show_errors:
-            dx = 0.15 * (i-1)
+            dx = 0.1 * (i-1)
             ax.errorbar(dx+mag[nstars > 0], (nstars/ntot)[nstars > 0],
-                        yerr=err[nstars > 0], fmt='-', color=color)
+                        yerr=err[nstars > 0], fmt='-', color=color, mew=2,
+                        capsize=1.5)
             ax.plot([], [], '-', color=color, label=label)
         else:
             ax.plot(mag[nstars > 0], (nstars/ntot)[nstars > 0],
@@ -175,11 +176,13 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
             ax.plot(mag, wstars/wtot, '--', color=color,
                     label=label.replace('-n', '-w'))
     ax.legend(loc='upper center')
+    # ticks and so on
     for i in (ax, hax):
         i.set_xlim(16.6, 25.4)
         i.xaxis.set_major_locator(ticker.MultipleLocator(2))
         i.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
     ax.yaxis.set_major_locator(ticker.MultipleLocator(0.005))
+    ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.001))
     hax.yaxis.set_major_formatter(ticker.FormatStrFormatter('$%d$'))
     ax.set_ylabel('stellar contamination')
     hax.set_xlabel('i-band magnitude')
