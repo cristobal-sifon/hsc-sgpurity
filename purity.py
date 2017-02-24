@@ -110,13 +110,14 @@ def match(ra, dec, ra_stars, dec_stars, label='stars', seeing='median',
     return fig, ax, indices
 
 
-def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots'):
+def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
+         show_weights=False):
     """
     Calculate and plot the contamination as a function of magnitude.
     The first four arguments are dictionaries with seeing as keys
 
     """
-    magbins = arange(15, 25.1, 0.5)
+    magbins = arange(15, 26.1, 0.5)
     mag = (magbins[:-1]+magbins[1:]) / 2
     keys = ('best', 'median', 'worst')
     overall = {key: 0 for key in keys}
@@ -141,8 +142,11 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots'):
         nstars = hax.hist(imag[stars[key]], magbins, histtype='step',
                           lw=2, color=color, log=True, bottom=1)[0]
         ngals = histogram(imag[galaxies[key]], magbins)[0]
-        ax.plot(mag, nstars/ntot, '-', color=color,
-                label='{0} stars (n)'.format(key))
+        if show_weights:
+            label = '{0}-n'.format(key.capitalize())
+        else:
+            label = key.capitalize()
+        ax.plot(mag, nstars/ntot, '-', color=color, label=label)
         #ax.plot(mag, ngals/ntot, '--', label='{0} galaxies'.format(key))
         # now weighted fractions
         weight = 1 / (cat['ishape_hsm_regauss_sigma']**2 + rms**2)
@@ -151,13 +155,15 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots'):
                            weights=weight[stars[key]])[0]
         wgals = histogram(imag[galaxies[key]], magbins,
                           weights=weight[galaxies[key]])[0]
-        ax.plot(mag, wstars/wtot, '--', color=color,
-                label='{0} stars (w)'.format(key))
+        if show_weights:
+            ax.plot(mag, wstars/wtot, '--', color=color,
+                    label=label.replace('-n', '-w'))
     ax.legend(loc='upper center')
     for i in (ax, hax):
-        i.set_xlim(16.6, 25.4)
+        i.set_xlim(16.6, 26.4)
         i.xaxis.set_major_locator(ticker.MultipleLocator(2))
         i.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+    hax.yaxis.set_major_formatter(ticker.FormatStrFormatter('$%d$'))
     ax.set_ylabel('fraction of stars')
     hax.set_xlabel('i-band magnitude')
     hax.set_ylabel('1+N')
