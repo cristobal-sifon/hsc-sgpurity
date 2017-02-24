@@ -6,6 +6,7 @@ import pylab
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
+from matplotlib import ticker
 from numpy import arange, histogram, log10, newaxis, ones, sort, sum as npsum
 from os import makedirs
 from os.path import isdir, join
@@ -111,8 +112,8 @@ def match(ra, dec, ra_stars, dec_stars, label='stars', seeing='median',
 
 def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots'):
     """
-    Plot the contamination as a function of magnitude.
-    The first three arguments are dictionaries with seeing as keys
+    Calculate and plot the contamination as a function of magnitude.
+    The first four arguments are dictionaries with seeing as keys
 
     """
     magbins = arange(15, 25.1, 0.5)
@@ -120,20 +121,27 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots'):
     keys = ('best', 'median', 'worst')
     overall = {key: 0 for key in keys}
     # bin by magnitude
-    fig, ax = pylab.subplots()
+    #fig, ax = pylab.subplots()
+    fig = pylab.figure(figsize=(7,7))
+    ax = pylab.subplot2grid((4,1), (0,0), rowspan=3)
+    ax.set_xticklabels([])
+    # axis for histograms
+    hax = pylab.subplot2grid((4,1), (3,0))
     for i, key in enumerate(keys):
         cat = cosmos[key]
         imag = cat['imag_forced_cmodel'][good[key]]
+        color = 'C{0}'.format(i)
         # overall ratios
         overall[key] = imag[stars[key]].size/imag.size
-        ax.axhline(overall[key], ls=':', lw=1, color='C{0}'.format(i))
+        ax.axhline(overall[key], ls=':', lw=1, color=color)
         print('Overall purity for {0} seeing is {1:.4f}'.format(
                 key, overall[key]))
         # binned fractions
         ntot = histogram(imag, magbins)[0]
-        nstars = histogram(imag[stars[key]], magbins)[0]
+        nstars = hax.hist(imag[stars[key]], magbins, histtype='step',
+                          lw=2, color=color, log=True, bottom=1)[0]
         ngals = histogram(imag[galaxies[key]], magbins)[0]
-        ax.plot(mag, nstars/ntot, 'C{0}-'.format(i),
+        ax.plot(mag, nstars/ntot, '-', color=color,
                 label='{0} stars (n)'.format(key))
         #ax.plot(mag, ngals/ntot, '--', label='{0} galaxies'.format(key))
         # now weighted fractions
@@ -143,12 +151,18 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots'):
                            weights=weight[stars[key]])[0]
         wgals = histogram(imag[galaxies[key]], magbins,
                           weights=weight[galaxies[key]])[0]
-        ax.plot(mag, wstars/wtot, 'C{0}--'.format(i),
+        ax.plot(mag, wstars/wtot, '--', color=color,
                 label='{0} stars (w)'.format(key))
     ax.legend(loc='upper center')
-    ax.set_xlabel('i-band magnitude')
+    for i in (ax, hax):
+        i.set_xlim(16.6, 25.4)
+        i.xaxis.set_major_locator(ticker.MultipleLocator(2))
+        i.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
     ax.set_ylabel('fraction of stars')
-    savefig(join(plot_path, 'purity.png'), fig=fig)
+    hax.set_xlabel('i-band magnitude')
+    hax.set_ylabel('1+N')
+    savefig(join(plot_path, 'purity.png'), fig=fig,
+            tight_kwargs={'pad': 0.4, 'h_pad': 0.25})
     return
 
 
