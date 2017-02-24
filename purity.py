@@ -117,7 +117,7 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
     The first four arguments are dictionaries with seeing as keys
 
     """
-    magbins = arange(15, 25.1, 0.5)
+    magbins = arange(15, 26, 0.6)
     mag = (magbins[:-1]+magbins[1:]) / 2
     keys = ('best', 'median', 'worst')
     overall = {key: 0 for key in keys}
@@ -142,12 +142,19 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
         nstars = hax.hist(imag[stars[key]], magbins, histtype='step',
                           lw=2, color=color, log=True, bottom=1)[0]
         ngals = histogram(imag[galaxies[key]], magbins)[0]
+        # Poisson errorbars
+        err = 1 / nstars**0.5 / ntot
+        print('nstars = {0}'.format(nstars))
+        print('err = {0}'.format(err))
         if show_weights:
             label = '{0}-n'.format(key.capitalize())
         else:
             label = key.capitalize()
         ax.plot(mag[nstars > 0], (nstars/ntot)[nstars > 0],
                 '-', color=color, label=label)
+        if key == 'median':
+            ax.errorbar(mag[nstars > 0], (nstars/ntot)[nstars > 0],
+                        yerr=err[nstars > 0], fmt='-', color=color)
         #ax.plot(mag, ngals/ntot, '--', label='{0} galaxies'.format(key))
         # now weighted fractions
         weight = 1 / (cat['ishape_hsm_regauss_sigma']**2 + rms**2)
