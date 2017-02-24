@@ -7,7 +7,7 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from matplotlib import ticker
-from numpy import arange, histogram, log10, newaxis, ones, sort, sum as npsum
+from numpy import arange, log10, newaxis, ones, sort, sum as npsum
 from os import makedirs
 from os.path import isdir, join
 
@@ -52,7 +52,8 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
     ax.axvline(log10(maxdist.value), ls='--', lw=1)
     ax.legend(loc='upper left')
     savefig(join(plot_path, 'hist_matches.png'), fig=fig)
-    plot(cosmos, good, stars, galaxies, plot_path=plot_path)
+    # calculate and plot purity
+    purity(cosmos, good, stars, galaxies, plot_path=plot_path)
     return
 
 
@@ -110,8 +111,8 @@ def match(ra, dec, ra_stars, dec_stars, label='stars', seeing='median',
     return fig, ax, indices
 
 
-def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
-         show_weights=False, show_errors=True):
+def purity(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
+           show_weights=False, show_errors=True):
     """
     Calculate and plot the contamination as a function of magnitude.
     The first four arguments are dictionaries with seeing as keys
@@ -128,53 +129,16 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
     ax.set_xticklabels([])
     # axis for histograms
     hax = pylab.subplot2grid((4,1), (3,0))
+    # main lines
     for i, key in enumerate(keys):
-        cat = cosmos[key]
-        imag = cat['imag_forced_cmodel'][good[key]]
-        print('imag.max() = {0}'.format(imag.max()))
+        imag = cosmos[key]['imag_forced_cmodel'][good[key]]
         color = 'C{0}'.format(i)
-        # overall ratios
-        overall[key] = imag[stars[key]].size/imag.size
-        ax.axhline(overall[key], ls=':', lw=1, color=color)
-        print('Overall purity for {0} seeing is {1:.4f}'.format(
-                key, overall[key]))
-        # binned fractions
-        # uncomment these two (and comment fhe next two) instructions
-        # to show the numerators instead of the denominators in the
-        # bottom panel
-        #ntot = histogram(imag, magbins)[0]
-        #nstars = hax.hist(imag[stars[key]], magbins, histtype='step',
-                          #lw=2, color=color, log=True, bottom=1)[0]
+        # pass these weights to plot() if I want to show them
+        weight = 1 / (cosmos[key]['ishape_hsm_regauss_sigma']**2 + rms**2)
+        plot(ax, key, imag, stars[key], galaxies[key],
+             mag, magbins, color=color, dx=0.1*(i-1))
         ntot = hax.hist(imag, magbins, histtype='step',
                         lw=2, color=color, log=True, bottom=1)[0]
-        nstars = histogram(imag[stars[key]], magbins)[0]
-        ngals = histogram(imag[galaxies[key]], magbins)[0]
-        if show_weights:
-            label = '{0}-n'.format(key.capitalize())
-        else:
-            label = key.capitalize()
-        # Poisson errorbars
-        err = 1 / nstars**0.5 / ntot
-        if show_errors:
-            dx = 0.1 * (i-1)
-            ax.errorbar(dx+mag[nstars > 0], (nstars/ntot)[nstars > 0],
-                        yerr=err[nstars > 0], fmt='-', color=color, mew=2,
-                        capsize=1.5)
-            ax.plot([], [], '-', color=color, label=label)
-        else:
-            ax.plot(mag[nstars > 0], (nstars/ntot)[nstars > 0],
-                    '-', color=color, label=label)
-        #ax.plot(mag, ngals/ntot, '--', label='{0} galaxies'.format(key))
-        # now weighted fractions
-        weight = 1 / (cat['ishape_hsm_regauss_sigma']**2 + rms**2)
-        wtot = histogram(imag, magbins, weights=weight)[0]
-        wstars = histogram(imag[stars[key]], magbins,
-                           weights=weight[stars[key]])[0]
-        wgals = histogram(imag[galaxies[key]], magbins,
-                          weights=weight[galaxies[key]])[0]
-        if show_weights:
-            ax.plot(mag, wstars/wtot, '--', color=color,
-                    label=label.replace('-n', '-w'))
     ax.legend(loc='upper center')
     # ticks and so on
     for i in (ax, hax):
@@ -189,6 +153,49 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
     hax.set_ylabel('1+N')
     savefig(join(plot_path, 'purity.png'), fig=fig,
             tight_kwargs={'pad': 0.4, 'h_pad': 0.25})
+    return
+
+
+def plot(ax, key, data, stars, galaxies, mag, magbins, color='C0',
+         dx=0, weight=[], show_errors=True):
+    # overall ratios
+    overall = data[stars].size/data.size
+    ax.axhline(overall, ls=':', lw=1, color=color)
+    print('Overall purity for {0} seeing is {1:.4f}'.format(
+            key, overall))
+    # binned fractions
+    # uncomment these two (and comment fhe next two) instructions
+    # to show the numerators instead of the denominators in the
+    # bottom panel
+    ntot = numpy.histogram(data, magbins)[0]
+    #nstars = hax.hist(data[stars[key]], magbins, histtype='step',
+                      #lw=2, color=color, log=True, bottom=1)[0]
+    nstars = numpy.histogram(data[stars], magbins)[0]
+    ngals = numpy.histogram(data[galaxies], magbins)[0]
+    if len(weight) > 0:
+        label = '{0}-n'.format(key.capitalize())
+    else:
+        label = key.capitalize()
+    # Poisson errorbars
+    err = 1 / nstars**0.5 / ntot
+    if show_errors:
+        ax.errorbar(dx+mag[nstars > 0], (nstars/ntot)[nstars > 0],
+                    yerr=err[nstars > 0], fmt='-', color=color, mew=2,
+                    capsize=1.5)
+        ax.plot([], [], '-', color=color, label=label)
+    else:
+        ax.plot(mag[nstars > 0], (nstars/ntot)[nstars > 0],
+                '-', color=color, label=label)
+    #ax.plot(mag, ngals/ntot, '--', label='{0} galaxies'.format(key))
+    # now weighted fractions
+    if len(weight) > 0:
+        wtot = numpy.histogram(data, magbins, weights=weight)[0]
+        wstars = numpy.histogram(
+            data[stars], magbins, weights=weight[stars])[0]
+        wgals = numpy.histogram(
+            data[galaxies], magbins, weights=weight[galaxies])[0]
+        ax.plot(mag, wstars/wtot, '--', color=color,
+                label=label.replace('-n', '-w'))
     return
 
 
