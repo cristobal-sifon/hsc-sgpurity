@@ -111,13 +111,13 @@ def match(ra, dec, ra_stars, dec_stars, label='stars', seeing='median',
 
 
 def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
-         show_weights=False):
+         show_weights=False, show_errors=True):
     """
     Calculate and plot the contamination as a function of magnitude.
     The first four arguments are dictionaries with seeing as keys
 
     """
-    magbins = arange(15, 26, 0.6)
+    magbins = arange(16.6, 26, 0.6)
     mag = (magbins[:-1]+magbins[1:]) / 2
     keys = ('best', 'median', 'worst')
     overall = {key: 0 for key in keys}
@@ -131,6 +131,7 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
     for i, key in enumerate(keys):
         cat = cosmos[key]
         imag = cat['imag_forced_cmodel'][good[key]]
+        print('imag.max() = {0}'.format(imag.max()))
         color = 'C{0}'.format(i)
         # overall ratios
         overall[key] = imag[stars[key]].size/imag.size
@@ -138,23 +139,30 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
         print('Overall purity for {0} seeing is {1:.4f}'.format(
                 key, overall[key]))
         # binned fractions
-        ntot = histogram(imag, magbins)[0]
-        nstars = hax.hist(imag[stars[key]], magbins, histtype='step',
-                          lw=2, color=color, log=True, bottom=1)[0]
+        # uncomment these two (and comment fhe next two) instructions
+        # to show the numerators instead of the denominators in the
+        # bottom panel
+        #ntot = histogram(imag, magbins)[0]
+        #nstars = hax.hist(imag[stars[key]], magbins, histtype='step',
+                          #lw=2, color=color, log=True, bottom=1)[0]
+        ntot = hax.hist(imag, magbins, histtype='step',
+                        lw=2, color=color, log=True, bottom=1)[0]
+        nstars = histogram(imag[stars[key]], magbins)[0]
         ngals = histogram(imag[galaxies[key]], magbins)[0]
-        # Poisson errorbars
-        err = 1 / nstars**0.5 / ntot
-        print('nstars = {0}'.format(nstars))
-        print('err = {0}'.format(err))
         if show_weights:
             label = '{0}-n'.format(key.capitalize())
         else:
             label = key.capitalize()
-        ax.plot(mag[nstars > 0], (nstars/ntot)[nstars > 0],
-                '-', color=color, label=label)
-        if key == 'median':
-            ax.errorbar(mag[nstars > 0], (nstars/ntot)[nstars > 0],
+        # Poisson errorbars
+        err = 1 / nstars**0.5 / ntot
+        if show_errors:
+            dx = 0.15 * (i-1)
+            ax.errorbar(dx+mag[nstars > 0], (nstars/ntot)[nstars > 0],
                         yerr=err[nstars > 0], fmt='-', color=color)
+            ax.plot([], [], '-', color=color, label=label)
+        else:
+            ax.plot(mag[nstars > 0], (nstars/ntot)[nstars > 0],
+                    '-', color=color, label=label)
         #ax.plot(mag, ngals/ntot, '--', label='{0} galaxies'.format(key))
         # now weighted fractions
         weight = 1 / (cat['ishape_hsm_regauss_sigma']**2 + rms**2)
@@ -171,6 +179,7 @@ def plot(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
         i.set_xlim(16.6, 25.4)
         i.xaxis.set_major_locator(ticker.MultipleLocator(2))
         i.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(0.005))
     hax.yaxis.set_major_formatter(ticker.FormatStrFormatter('$%d$'))
     ax.set_ylabel('stellar contamination')
     hax.set_xlabel('i-band magnitude')
