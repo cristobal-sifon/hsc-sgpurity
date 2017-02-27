@@ -16,13 +16,8 @@ from os.path import isdir, join
 try:
     import plottools
     plottools.update_rcParams()
-    do_hist = True
 except ImportError:
-    msg = 'WARNING: module plottools not available - histograms will not be' \
-          ' generated. Please clone/download from' \
-          ' https://github.com/cristobal-sifon/plottools'
-    print(msg)
-    do_hist = False
+    pass
 
 
 def main(maxdist=0.4*u.arcsec, plot_path='plots'):
@@ -69,14 +64,13 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
     purity(cosmos, good, stars, galaxies, plot_path=plot_path)
 
     ## plot distributions of stars vs. galaxies
-    if do_hist:
-        keys = ('iblendedness_abs_flux', 'ishape_hsm_regauss_e1',
-                'ishape_hsm_regauss_e2', 'ishape_hsm_regauss_resolution')
-        keybins = (linspace(0, 0.45, 51), linspace(-2.1, 2.1, 51),
-                   linspace(-2.1, 2.1, 51), linspace(0.3, 1.1, 51))
-        for key, bins in izip(keys, keybins):
-            histogram(cosmos, good, stars, galaxies, key, bins=bins,
-                      plot_path=plot_path)
+    keys = ('iblendedness_abs_flux', 'ishape_hsm_regauss_e1',
+            'ishape_hsm_regauss_e2', 'ishape_hsm_regauss_resolution')
+    keybins = (linspace(0, 0.45, 51), linspace(-2.1, 2.1, 51),
+               linspace(-2.1, 2.1, 51), linspace(0.3, 1.1, 51))
+    for key, bins in izip(keys, keybins):
+        histogram(cosmos, good, stars, galaxies, key, bins=bins,
+                  plot_path=plot_path)
     return
 
 
