@@ -72,8 +72,8 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
     if do_hist:
         keys = ('iblendedness_abs_flux', 'ishape_hsm_regauss_e1',
                 'ishape_hsm_regauss_e2', 'ishape_hsm_regauss_resolution')
-        keybins = (linspace(0, 0.45, 51), linspace(-2, 2, 51),
-                   linspace(-2, 2, 51), linspace(0.3, 1, 51))
+        keybins = (linspace(0, 0.45, 51), linspace(-2.1, 2.1, 51),
+                   linspace(-2.1, 2.1, 51), linspace(0.3, 1.1, 51))
         for key, bins in izip(keys, keybins):
             histogram(cosmos, good, stars, galaxies, key, bins=bins,
                       plot_path=plot_path)
@@ -113,27 +113,35 @@ def cosmos_sources(seeing, with_cuts=True, path='../catalogs/COSMOS',
 
 def histogram(cosmos, good, stars, galaxies, key, bins=50, plot_path='plots'):
     hist_path = join(plot_path, 'histograms')
-    #cdf_path = join(cdf_path, 'cdf'
     if not isdir(hist_path):
         makedirs(hist_path)
-        #makedirs(cdf_path)
-    fig, ax = pylab.subplots()
-    #cfig, cax = pylab.subplots()
+    fig, (ax, cdfax) = pylab.subplots(figsize=(11,5), ncols=2)
     i = 0
     for seeing in ('best', 'median', 'worst'):
-        color = 'C{0}'.format(i)
+        scolor = 'C{0}'.format(i)
+        gcolor = 'C{0}'.format(i+1)
+        # stars and galaxies within HSC-COSMOS
         s = cosmos[seeing][key][good[seeing]][stars[seeing]]
-        ax.hist(s, bins, color='C{0}'.format(i), ls='-', lw=2,
-                log=True, bottom=1,
-                histtype='step', label='{0} stars'.format(seeing))
         g = cosmos[seeing][key][good[seeing]][galaxies[seeing]]
-        ax.hist(g, bins, color='C{0}'.format(i+1), ls='-', lw=2,
-                log=True, bottom=1,
-                histtype='step', label='{0} galaxies'.format(seeing))
+        # differential histograms
+        ns, xs = ax.hist(s, bins, color=scolor, ls='-', lw=2,
+                         log=True, bottom=1, histtype='step')[:2]
+        ng, xg = ax.hist(g, bins, color=gcolor, ls='--', lw=2,
+                         log=True, bottom=1, histtype='step')[:2]
+        # cumulative density functions
+        cdfs = (numpy.cumsum(ns)-ns[0]) / (ns.sum()-ns[0])
+        cdfax.step(xs[:-1], cdfs, where='post', color=scolor, lw=2,
+                   label='{0} stars'.format(seeing))
+        cdfg = (numpy.cumsum(ng)-ng[0]) / (ng.sum()-ng[0])
+        cdfax.step(xg[:-1], cdfg, where='post', color=gcolor, lw=2,
+                   dashes=(10,6), label='{0} galaxies'.format(seeing))
         i += 2
-    ax.legend(loc='upper center')
-    ax.set_xlabel(key.replace('_', '\_'))
+    cdfax.legend(loc='lower right')
+    xlabel = key.replace('_', '\_')
+    ax.set_xlabel(xlabel)
     ax.set_ylabel('1+n')
+    cdfax.set_xlabel(xlabel)
+    cdfax.set_ylabel('$N(<x)$')
     savefig(join(hist_path, 'hist-{0}.png'.format(key)), fig=fig)
     return
 
