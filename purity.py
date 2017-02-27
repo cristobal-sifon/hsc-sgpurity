@@ -6,8 +6,9 @@ import pylab
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
+from itertools import izip
 from matplotlib import ticker
-from numpy import arange, log10, newaxis, ones, sort, sum as npsum
+from numpy import arange, linspace, log10, newaxis, ones, sort, sum as npsum
 from os import makedirs
 from os.path import isdir, join
 
@@ -15,8 +16,13 @@ from os.path import isdir, join
 try:
     import plottools
     plottools.update_rcParams()
+    do_hist = True
 except ImportError:
-    pass
+    msg = 'WARNING: module plottools not available - histograms will not be' \
+          ' generated. Please clone/download from' \
+          ' https://github.com/cristobal-sifon/plottools'
+    print(msg)
+    do_hist = False
 
 
 def main(maxdist=0.4*u.arcsec, plot_path='plots'):
@@ -31,7 +37,9 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
     galaxies = {}
     fig, ax = pylab.subplots()
     for seeing in ('best', 'median', 'worst'):
-        cosmos[seeing], good[seeing] = cosmos_sources(seeing)
+        print_columns = (seeing == 'best')
+        cosmos[seeing], good[seeing] = \
+            cosmos_sources(seeing, print_columns=print_columns)
         stars[seeing] = \
             match(cosmos[seeing]['ira'][good[seeing]],
                   cosmos[seeing]['idec'][good[seeing]], *cosmos_stars,
@@ -52,14 +60,41 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
     ax.axvline(log10(maxdist.value), ls='--', lw=1)
     ax.legend(loc='upper left')
     savefig(join(plot_path, 'hist_matches.png'), fig=fig)
-    # calculate and plot purity
+
+    ## calculate and plot purity
+    # these are masks to test the purity to different conditions (e.g.,
+    # photo-z)
+    #masks = [[],
+             #(
     purity(cosmos, good, stars, galaxies, plot_path=plot_path)
+
+    ## plot distributions of stars vs. galaxies
+    if do_hist:
+        keys = ('iblendedness_abs_flux', 'ishape_hsm_regauss_e1',
+                'ishape_hsm_regauss_e2', 'ishape_hsm_regauss_resolution')
+        keybins = (linspace(0, 0.45, 51), linspace(-2, 2, 51),
+                   linspace(-2, 2, 51), linspace(0.3, 1, 51))
+        for key, bins in izip(keys, keybins):
+            histogram(cosmos, good, stars, galaxies, key, bins=bins,
+                      plot_path=plot_path)
     return
 
 
+def cosmos_objects(mu_class=2):
+    filename = 'input/cosmos_sg_all_GOLD.fits'
+    cat = fits.getdata(filename)
+    ra, dec = cat['coord'].T
+    obj = (cat['mu_class'] == mu_class)
+    print('Using {0}/{1} true objects'.format(ra[obj].size, ra.size))
+    return ra[obj], dec[obj]
+
+
 def cosmos_sources(seeing, with_cuts=True, path='../catalogs/COSMOS',
-                   filename='COSMOS_wide_{0}_v3_withwlcuts.fits'):
+                   filename='COSMOS_wide_{0}_v3_withwlcuts.fits',
+                   print_columns=False):
     cat = fits.getdata(join(path, filename.format(seeing)))
+    if print_columns:
+        print('\ncolumns: {0}\n'.format(sort(cat.names)))
     if with_cuts:
         sources = ones(cat['ira'].size, dtype=bool)
         print('Supplied catalog contains only {0} valid sources'.format(
@@ -76,13 +111,31 @@ def cosmos_sources(seeing, with_cuts=True, path='../catalogs/COSMOS',
     return cat, sources
 
 
-def cosmos_objects(mu_class=2):
-    filename = 'input/cosmos_sg_all_GOLD.fits'
-    cat = fits.getdata(filename)
-    ra, dec = cat['coord'].T
-    obj = (cat['mu_class'] == mu_class)
-    print('Using {0}/{1} true objects'.format(ra[obj].size, ra.size))
-    return ra[obj], dec[obj]
+def histogram(cosmos, good, stars, galaxies, key, bins=50, plot_path='plots'):
+    hist_path = join(plot_path, 'histograms')
+    #cdf_path = join(cdf_path, 'cdf'
+    if not isdir(hist_path):
+        makedirs(hist_path)
+        #makedirs(cdf_path)
+    fig, ax = pylab.subplots()
+    #cfig, cax = pylab.subplots()
+    i = 0
+    for seeing in ('best', 'median', 'worst'):
+        color = 'C{0}'.format(i)
+        s = cosmos[seeing][key][good[seeing]][stars[seeing]]
+        ax.hist(s, bins, color='C{0}'.format(i), ls='-', lw=2,
+                log=True, bottom=1,
+                histtype='step', label='{0} stars'.format(seeing))
+        g = cosmos[seeing][key][good[seeing]][galaxies[seeing]]
+        ax.hist(g, bins, color='C{0}'.format(i+1), ls='-', lw=2,
+                log=True, bottom=1,
+                histtype='step', label='{0} galaxies'.format(seeing))
+        i += 2
+    ax.legend(loc='upper center')
+    ax.set_xlabel(key.replace('_', '\_'))
+    ax.set_ylabel('1+n')
+    savefig(join(hist_path, 'hist-{0}.png'.format(key)), fig=fig)
+    return
 
 
 def match(ra, dec, ra_stars, dec_stars, label='stars', seeing='median',
@@ -112,7 +165,7 @@ def match(ra, dec, ra_stars, dec_stars, label='stars', seeing='median',
 
 
 def purity(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
-           show_weights=False, show_errors=True):
+           mask=[], show_weights=False, show_errors=True):
     """
     Calculate and plot the contamination as a function of magnitude.
     The first four arguments are dictionaries with seeing as keys
@@ -197,6 +250,8 @@ def plot(ax, key, data, stars, galaxies, mag, magbins, color='C0',
         ax.plot(mag, wstars/wtot, '--', color=color,
                 label=label.replace('-n', '-w'))
     return
+
+
 
 
 def savefig(output, fig=None, close=True, verbose=True, tight=True,
