@@ -232,11 +232,11 @@ def plot(ax, key, data, stars, galaxies, mag, magbins, color='C0',
     else:
         label = key.capitalize()
     # Poisson errorbars
-    err = 1 / nstars**0.5 / ntot
+    err = nstars/ntot * (1/nstars + 1/ntot)**0.5
     if show_errors:
         ax.errorbar(dx+mag[nstars > 0], (nstars/ntot)[nstars > 0],
                     yerr=err[nstars > 0], fmt='-', color=color, mew=2,
-                    capsize=1.5)
+                    capsize=0)
         ax.plot([], [], '-', color=color, label=label)
     else:
         ax.plot(mag[nstars > 0], (nstars/ntot)[nstars > 0],
