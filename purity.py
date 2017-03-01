@@ -55,13 +55,19 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
     ax.axvline(log10(maxdist.value), ls='--', lw=1)
     ax.legend(loc='upper left')
     savefig(join(plot_path, 'hist_matches.png'), fig=fig)
+    # save stars and galaxies to new catalogs
+    for seeing in ('best', 'median', 'worst'):
+        store_sources(cosmos[seeing], good[seeing], stars[seeing], seeing,
+                      'stars')
+        store_sources(cosmos[seeing], good[seeing], galaxies[seeing], seeing,
+                      'galaxies')
 
     ## calculate and plot purity
     # these are masks to test the purity to different conditions (e.g.,
     # photo-z)
     #masks = [[],
              #(
-    purity(cosmos, good, stars, galaxies, plot_path=plot_path)
+    contam = contamination(cosmos, good, stars, galaxies, plot_path=plot_path)
 
     ## plot distributions of stars vs. galaxies
     keys = ('iblendedness_abs_flux', 'ishape_hsm_regauss_e1',
@@ -72,6 +78,53 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
         histogram(cosmos, good, stars, galaxies, key, bins=bins,
                   plot_path=plot_path)
     return
+
+
+def contamination(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
+                  mask=[], show_weights=False, show_errors=True):
+    """
+    Calculate and plot the contamination (that is, the fraction of
+    stars in the galaxy catalog) as a function of magnitude.
+    The first four arguments are dictionaries with seeing as keys
+
+    """
+    magbins = arange(16.6, 26, 0.6)
+    mag = (magbins[:-1]+magbins[1:]) / 2
+    keys = ('best', 'median', 'worst')
+    overall = {key: 0 for key in keys}
+    # bin by magnitude
+    #fig, ax = pylab.subplots()
+    fig = pylab.figure(figsize=(7,7))
+    ax = pylab.subplot2grid((4,1), (0,0), rowspan=3)
+    ax.set_xticklabels([])
+    # axis for histograms
+    hax = pylab.subplot2grid((4,1), (3,0))
+    # main lines
+    contam = {}
+    for i, key in enumerate(keys):
+        imag = cosmos[key]['imag_forced_cmodel'][good[key]]
+        color = 'C{0}'.format(i)
+        # pass these weights to plot() if I want to show them
+        weight = 1 / (cosmos[key]['ishape_hsm_regauss_sigma']**2 + rms**2)
+        contam[key] = plot(ax, key, imag, stars[key], galaxies[key],
+                           mag, magbins, color=color, dx=0.1*(i-1))
+        nhist = hax.hist(imag, magbins, histtype='step',
+                        lw=2, color=color, log=True, bottom=1)[0]
+    ax.legend(loc='upper center')
+    # ticks and so on
+    for i in (ax, hax):
+        i.set_xlim(16.6, 25.4)
+        i.xaxis.set_major_locator(ticker.MultipleLocator(2))
+        i.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(0.005))
+    ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.001))
+    hax.yaxis.set_major_formatter(ticker.FormatStrFormatter('$%d$'))
+    ax.set_ylabel('stellar contamination')
+    hax.set_xlabel('i-band magnitude')
+    hax.set_ylabel('1+N')
+    savefig(join(plot_path, 'purity.png'), fig=fig,
+            tight_kwargs={'pad': 0.4, 'h_pad': 0.25})
+    return contam
 
 
 def cosmos_objects(mu_class=2):
@@ -166,51 +219,6 @@ def match(ra, dec, ra_stars, dec_stars, label='stars', seeing='median',
     return fig, ax, indices
 
 
-def purity(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
-           mask=[], show_weights=False, show_errors=True):
-    """
-    Calculate and plot the contamination as a function of magnitude.
-    The first four arguments are dictionaries with seeing as keys
-
-    """
-    magbins = arange(16.6, 26, 0.6)
-    mag = (magbins[:-1]+magbins[1:]) / 2
-    keys = ('best', 'median', 'worst')
-    overall = {key: 0 for key in keys}
-    # bin by magnitude
-    #fig, ax = pylab.subplots()
-    fig = pylab.figure(figsize=(7,7))
-    ax = pylab.subplot2grid((4,1), (0,0), rowspan=3)
-    ax.set_xticklabels([])
-    # axis for histograms
-    hax = pylab.subplot2grid((4,1), (3,0))
-    # main lines
-    for i, key in enumerate(keys):
-        imag = cosmos[key]['imag_forced_cmodel'][good[key]]
-        color = 'C{0}'.format(i)
-        # pass these weights to plot() if I want to show them
-        weight = 1 / (cosmos[key]['ishape_hsm_regauss_sigma']**2 + rms**2)
-        plot(ax, key, imag, stars[key], galaxies[key],
-             mag, magbins, color=color, dx=0.1*(i-1))
-        ntot = hax.hist(imag, magbins, histtype='step',
-                        lw=2, color=color, log=True, bottom=1)[0]
-    ax.legend(loc='upper center')
-    # ticks and so on
-    for i in (ax, hax):
-        i.set_xlim(16.6, 25.4)
-        i.xaxis.set_major_locator(ticker.MultipleLocator(2))
-        i.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
-    ax.yaxis.set_major_locator(ticker.MultipleLocator(0.005))
-    ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.001))
-    hax.yaxis.set_major_formatter(ticker.FormatStrFormatter('$%d$'))
-    ax.set_ylabel('stellar contamination')
-    hax.set_xlabel('i-band magnitude')
-    hax.set_ylabel('1+N')
-    savefig(join(plot_path, 'purity.png'), fig=fig,
-            tight_kwargs={'pad': 0.4, 'h_pad': 0.25})
-    return
-
-
 def plot(ax, key, data, stars, galaxies, mag, magbins, color='C0',
          dx=0, weight=[], show_errors=True):
     # overall ratios
@@ -251,7 +259,7 @@ def plot(ax, key, data, stars, galaxies, mag, magbins, color='C0',
             data[galaxies], magbins, weights=weight[galaxies])[0]
         ax.plot(mag, wstars/wtot, '--', color=color,
                 label=label.replace('-n', '-w'))
-    return
+    return nstars/ntot, err
 
 
 
@@ -290,6 +298,18 @@ def savefig(output, fig=None, close=True, verbose=True, tight=True,
         pylab.close()
     if verbose:
         print('Saved to {0}'.format(output))
+    return
+
+
+def store_sources(cosmos, good, sources, seeing, label, output_path='output'):
+    if not isdir(output_path):
+        makedirs(output_path)
+    data = [sources]
+    for name in ('ira', 'idec', 'imag_forced_cmodel'):
+        data = numpy.vstack((data, cosmos[name][good][sources]))
+    hdr = 'index  ira  idec  imag_forced_cmodel'
+    numpy.savetxt(join(output_path, '{0}_{1}.cat'.format(label, seeing)),
+                  data.T, header=hdr, fmt='%6d %10.5f %8.5f %7.3f')
     return
 
 
