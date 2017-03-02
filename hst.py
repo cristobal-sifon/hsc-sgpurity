@@ -26,6 +26,8 @@ def closest(xy, ref='stars'):
         ra, dec = stars['coord'].T
     elif ref == 'galaxies':
         ra, dec = galaxies['coord'].T
+    elif ref == 'all':
+        ra, dec = catalog['coord'].T
     hst_objects = SkyCoord(ra=ra*u.degree, dec=dec*u.degree)
     return xy.match_to_catalog_sky(hst_objects) # = ref, d2d, d3d
 
@@ -43,3 +45,13 @@ def match(xy, ref='stars', maxdist=0.4*u.arcsec, verbose=True):
                 indices.size, ref.size))
     return indices
 
+
+def skycoord(catalog):
+    """
+    Simple wrapper for `astropy.coordinates.SkyCoord`.
+
+    Argument `catalog` should be the HST catalog or any portion of it
+
+    """
+    x, y = catalog['coord'].T
+    return SkyCoord(ra=x*u.degree, dec=y*u.degree)
