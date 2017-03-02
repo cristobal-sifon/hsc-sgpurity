@@ -19,13 +19,16 @@ try:
 except ImportError:
     pass
 
+# local
+import hst
+
 
 def main(maxdist=0.4*u.arcsec, plot_path='plots'):
     # create plot folder if it doesn't exist
     if not isdir(plot_path):
         makedirs(plot_path)
-    cosmos_galaxies = cosmos_objects(mu_class=1)
-    cosmos_stars = cosmos_objects()
+    hst_galaxies = (hst.ra[hst.galaxies], hst.dec[hst.galaxies])
+    hst_stars = (hst.ra[hst.stars], hst.dec[hst.stars])
     cosmos = {}
     good = {}
     stars = {}
@@ -34,15 +37,15 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
     for seeing in ('best', 'median', 'worst'):
         print_columns = (seeing == 'best')
         cosmos[seeing], good[seeing] = \
-            cosmos_sources(seeing, print_columns=print_columns)
+            cosmos_hsc(seeing, print_columns=print_columns)
         stars[seeing] = \
             match(cosmos[seeing]['ira'][good[seeing]],
-                  cosmos[seeing]['idec'][good[seeing]], *cosmos_stars,
+                  cosmos[seeing]['idec'][good[seeing]], *hst_stars,
                   label='stars', seeing=seeing, maxdist=maxdist,
                   fig=fig, ax=ax)[2]
         galaxies[seeing] = \
             match(cosmos[seeing]['ira'][good[seeing]],
-                  cosmos[seeing]['idec'][good[seeing]], *cosmos_galaxies,
+                  cosmos[seeing]['idec'][good[seeing]], *hst_galaxies,
                   label='galaxies', seeing=seeing, maxdist=maxdist,
                   fig=fig, ax=ax)[2]
         print('')
@@ -127,18 +130,9 @@ def contamination(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
     return contam
 
 
-def cosmos_objects(mu_class=2):
-    filename = 'input/cosmos_sg_all_GOLD.fits'
-    cat = fits.getdata(filename)
-    ra, dec = cat['coord'].T
-    obj = (cat['mu_class'] == mu_class)
-    print('Using {0}/{1} true objects'.format(ra[obj].size, ra.size))
-    return ra[obj], dec[obj]
-
-
-def cosmos_sources(seeing, with_cuts=True, path='../catalogs/COSMOS',
-                   filename='COSMOS_wide_{0}_v3_withwlcuts.fits',
-                   print_columns=False):
+def cosmos_hsc(seeing, with_cuts=True, path='../catalogs/COSMOS',
+               filename='COSMOS_wide_{0}_v3_withwlcuts.fits',
+               print_columns=False):
     cat = fits.getdata(join(path, filename.format(seeing)))
     if print_columns:
         print('\ncolumns: {0}\n'.format(sort(cat.names)))
@@ -193,20 +187,15 @@ def histogram(cosmos, good, stars, galaxies, key, bins=50, plot_path='plots'):
     return
 
 
-def match(ra, dec, ra_stars, dec_stars, label='stars', seeing='median',
+def match(ra, dec, ra_hst, dec_hst, label='stars', seeing='median',
           maxdist=0.4*u.arcsec, fig=None, ax=None, save=False,
           plot_path='plots'):
     print('Matching {0} sources to {1} {2} with {3} seeing'.format(
-            ra.size, ra_stars.size, label, seeing))
+            ra.size, ra_hst.size, label, seeing))
     sources = SkyCoord(ra=ra*u.degree, dec=dec*u.degree)
-    objects = SkyCoord(ra=ra_stars*u.degree, dec=dec_stars*u.degree)
-    ref, d2d, d3d = sources.match_to_catalog_sky(objects)
-    good = (d2d < maxdist)
-    indices = numpy.arange(ra.size, dtype=int)[good]
-    print('Found {0}/{1} successful matches (max={2})'.format(
-            indices.size, ref.size, indices.max()))
+    indices = hst.match(sources, ref=label, maxdist=maxdist, verbose=True)
+    dist = hst.closest(sources, ref=label)[1].to(u.arcsec).value
     # plot minimum distances
-    dist = d2d.to(u.arcsec).value
     if fig is None:
         fig, ax = pylab.subplots()
     hist, edges = ax.hist(
