@@ -12,12 +12,9 @@ from numpy import arange, linspace, log10, newaxis, ones, sort, sum as npsum
 from os import makedirs
 from os.path import isdir, join
 
-# my code - just using my preferred settings
-try:
-    import plottools
-    plottools.update_rcParams()
-except ImportError:
-    pass
+# my code - download from https://github.com/cristobal-sifon/plottools
+import plottools
+plottools.update_rcParams()
 
 # local
 import hst
@@ -57,7 +54,7 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
     print('')
     ax.axvline(log10(maxdist.value), ls='--', lw=1)
     ax.legend(loc='upper left')
-    savefig(join(plot_path, 'hist_matches.png'), fig=fig)
+    plottools.savefig(join(plot_path, 'hist_matches.png'), fig=fig)
     # save stars and galaxies to new catalogs
     for seeing in ('best', 'median', 'worst'):
         store_sources(cosmos[seeing], good[seeing], stars[seeing], seeing,
@@ -125,8 +122,8 @@ def contamination(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
     ax.set_ylabel('stellar contamination')
     hax.set_xlabel('i-band magnitude')
     hax.set_ylabel('1+N')
-    savefig(join(plot_path, 'purity.png'), fig=fig,
-            tight_kwargs={'pad': 0.4, 'h_pad': 0.25})
+    plottools.savefig(join(plot_path, 'purity.png'), fig=fig,
+                      tight_kwargs={'pad': 0.4, 'h_pad': 0.25})
     return contam
 
 
@@ -183,7 +180,7 @@ def histogram(cosmos, good, stars, galaxies, key, bins=50, plot_path='plots'):
     ax.set_ylabel('1+n')
     cdfax.set_xlabel(xlabel)
     cdfax.set_ylabel('$N(<x)$')
-    savefig(join(hist_path, 'hist-{0}.png'.format(key)), fig=fig)
+    plottools.savefig(join(hist_path, 'hist-{0}.png'.format(key)), fig=fig)
     return
 
 
@@ -204,7 +201,7 @@ def match(ra, dec, ra_hst, dec_hst, label='stars', seeing='median',
     ax.set_xlabel('log distance to closest match (arcsec)')
     ax.set_ylabel('1+N')
     if save:
-        savefig(join(plot_path, 'hist_matches.png'), fig=fig)
+        plottools.savefig(join(plot_path, 'hist_matches.png'), fig=fig)
     return fig, ax, indices
 
 
@@ -249,45 +246,6 @@ def plot(ax, key, data, stars, galaxies, mag, magbins, color='C0',
         ax.plot(mag, wstars/wtot, '--', color=color,
                 label=label.replace('-n', '-w'))
     return nstars/ntot, err
-
-
-
-
-def savefig(output, fig=None, close=True, verbose=True, tight=True,
-            tight_kwargs={'pad': 0.4}):
-    """
-    Wrapper to save figures, stolen from my own plottools
-    (https://github.com/cristobal-sifon/plottools).
-
-    Parameters
-    ----------
-        output  : str
-                  Output file name (including extension)
-
-    Optional parameters
-    -------------------
-        fig     : pyplot.figure object
-                  figure containing the plot.
-        close   : bool
-                  Whether to close the figure after saving.
-        verbose : bool
-                  Whether to print the output filename on screen
-        tight   : bool
-                  Whether to call `tight_layout()`
-        tight_kwargs : dict
-                  keyword arguments to be passed to `tight_layout()`
-
-    """
-    if fig is None:
-        fig = pylab
-    if tight:
-        fig.tight_layout(**tight_kwargs)
-    fig.savefig(output)
-    if close:
-        pylab.close()
-    if verbose:
-        print('Saved to {0}'.format(output))
-    return
 
 
 def store_sources(cosmos, good, sources, seeing, label, output_path='output'):
