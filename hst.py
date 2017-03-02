@@ -10,8 +10,8 @@ from astropy.io import fits
 filename = 'input/cosmos_sg_all_GOLD.fits'
 catalog = fits.getdata(filename)
 ra, dec = catalog['coord'].T
-galaxies = (catalog['mu_class'] == 1)
-stars = (catalog['mu_class'] == 2)
+galaxies = catalog[catalog['mu_class'] == 1]
+stars = catalog[catalog['mu_class'] == 2]
 objects = SkyCoord(ra=ra*u.degree, dec=dec*u.degree)
 
 
@@ -23,10 +23,11 @@ def closest(xy, ref='stars'):
     if type(xy) != coordinates.sky_coordinate.SkyCoord:
         xy = SkyCoord(ra=xy[0]*u.degree, dec=xy[1]*u.degree)
     if ref == 'stars':
-        sample = stars
+        ra, dec = stars['coord'].T
     elif ref == 'galaxies':
-        sample = galaxies
-    return xy.match_to_catalog_sky(objects[sample]) # = ref, d2d, d3d
+        ra, dec = galaxies['coord'].T
+    hst_objects = SkyCoord(ra=ra*u.degree, dec=dec*u.degree)
+    return xy.match_to_catalog_sky(hst_objects) # = ref, d2d, d3d
 
 
 def match(xy, ref='stars', maxdist=0.4*u.arcsec, verbose=True):

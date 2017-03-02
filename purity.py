@@ -27,8 +27,8 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
     # create plot folder if it doesn't exist
     if not isdir(plot_path):
         makedirs(plot_path)
-    hst_galaxies = (hst.ra[hst.galaxies], hst.dec[hst.galaxies])
-    hst_stars = (hst.ra[hst.stars], hst.dec[hst.stars])
+    hst_galaxies = hst.galaxies['coord'].T
+    hst_stars = hst.stars['coord'].T
     cosmos = {}
     good = {}
     stars = {}
