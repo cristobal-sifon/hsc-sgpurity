@@ -19,16 +19,17 @@ import hst
 
 
 def main():
-    second = {}
-    for seeing in ('best', 'median', 'worst'):
-        print('\n ** {0} seeing **'.format(seeing.capitalize()))
-        second[seeing] = match_two(seeing)
-        #break
-    hist_second(second)
+    for ref in ('stars', 'galaxies', 'all'):
+        second = {}
+        for seeing in ('best', 'median', 'worst'):
+            print('\n ** {0} seeing **'.format(seeing.capitalize()))
+            second[seeing] = match_two(seeing, ref=ref)
+            #break
+        hist_second(second, ref=ref)
     return
 
 
-def match_two(seeing, maxdist=2*u.arcsec):
+def match_two(seeing, maxdist=2*u.arcsec, ref='stars'):
     """
     Find the next-nearest HST star to every star in the HSC source
     catalog. The goal here is to find plausible binaries so `maxdist`
@@ -38,20 +39,29 @@ def match_two(seeing, maxdist=2*u.arcsec):
     """
     stars = ascii.read('output/stars_{0}.cat'.format(seeing))
     xystars = SkyCoord(ra=stars['ira']*u.degree, dec=stars['idec']*u.degree)
-    matched = hst.match(xystars, ref='stars')
-    ra_hst, dec_hst = hst.stars['coord'].T
+    matched = hst.match(xystars, ref=ref)
+    if ref == 'stars':
+        ra_hst, dec_hst = hst.stars['coord'].T
+        hst_stars = hst.skycoord(hst.stars)
+    elif ref == 'galaxies':
+        ra_hst, dec_hst = hst.galaxies['coord'].T
+        hst_stars = hst.skycoord(hst.galaxies)
+    elif ref == 'all':
+        ra_hst = hst.ra
+        dec_hst = hst.dec
+        hst_stars = hst.objects
     hst_matches = SkyCoord(ra=ra_hst[matched]*u.degree,
                            dec=dec_hst[matched]*u.degree)
     # find the next closest object in the HST catalog
     neighbors = []
     separation = []
     closest = numpy.zeros(ra_hst[matched].size)
-    hst_stars = hst.skycoord(hst.stars)
     rng = numpy.arange(hst_stars.size, dtype=int)
     for i, xy in enumerate(hst_matches):
         sep = xy.separation(hst_stars)
         neighbors.append(rng[sep < maxdist])
         separation.append(sep[neighbors[i]])
+        #print('closest = {0}'.format(numpy.sort(sep.to(u.arcsec).value)[:5]))
         closest[i] = numpy.sort(sep)[1].to(u.arcsec).value
     # number of neighbors
     nn = numpy.array([len(n) for n in neighbors])
@@ -61,12 +71,13 @@ def match_two(seeing, maxdist=2*u.arcsec):
     return closest
 
 
-def hist_second(dist, plot_path='plots'):
+def hist_second(dist, ref='stars', plot_path='plots'):
     if not isdir(plot_path):
         makedirs(plot_path)
     bins = numpy.logspace(-2, 2, 26)
     fig, ax = pylab.subplots()
-    ax.annotate('Closest star (arcsec):', xy=(0.03,0.6),
+    name = {'stars': 'star', 'galaxies': 'galaxy', 'all': 'object'}
+    ax.annotate('Closest {0} (arcsec):'.format(name[ref]), xy=(0.03,0.6),
                 xycoords='axes fraction', color='k', fontsize=16,
                 ha='left', va='bottom')
     for i, seeing in enumerate(('best', 'median', 'worst')):
@@ -78,9 +89,9 @@ def hist_second(dist, plot_path='plots'):
                     color=color, fontsize=16, ha='left', va='bottom')
     ax.legend(loc='upper left')
     ax.set_xscale('log')
-    ax.set_xlabel('Distance to nearest star (arcsec)')
+    ax.set_xlabel('Distance to nearest {0} (arcsec)'.format(name[ref]))
     ax.set_ylabel('1+Nstars')
-    plottools.savefig(join(plot_path, 'distances_companion.png'), fig=fig)
+    plottools.savefig(join(plot_path, 'nearest_{0}.png'.format(ref)), fig=fig)
     return
 
 main()
