@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 from __future__ import division, print_function
 
+import argparse
 import numpy
 import pylab
+import sys
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
@@ -21,7 +23,10 @@ plottools.update_rcParams()
 import hst
 
 
-def main(maxdist=0.4*u.arcsec, photoz_code='mlz', plot_path='plots'):
+def main(maxdist=0.4*u.arcsec, plot_path='plots'):
+
+    args = read_args()
+
     # create plot folder if it doesn't exist
     if not isdir(plot_path):
         makedirs(plot_path)
@@ -37,30 +42,29 @@ def main(maxdist=0.4*u.arcsec, photoz_code='mlz', plot_path='plots'):
     for seeing in ('best', 'median', 'worst'):
         print_columns = (seeing == 'best')
         cosmos[seeing], good[seeing] = \
-            cosmos_hsc(seeing, print_columns=print_columns)
+            cosmos_hsc(args, seeing, print_columns=print_columns)
         ra = cosmos[seeing]['ira']
         nobj = ra.size
         ngood = ra[good[seeing]].size
         print('Total: {0}'.format(nobj))
         print('Good: {0} ({1:.4f})'.format(ngood, ngood/nobj))
         print('WL-masked: {0} ({1:.4f})'.format(nobj-ngood, 1-ngood/nobj))
-        photoz[seeing] = load_photoz(seeing, code=photoz_code)
-        goodpz = numpy.isfinite(photoz[seeing]['PHOTOZ_BEST'])
+        photoz[seeing], goodpz = load_photoz(args, seeing)
         pzexcl[seeing] = (~goodpz & good[seeing])
         print('pz-bad: {0}'.format(ra[~goodpz].size))
         print('pz-masked: {0} (another {1:.4f})'.format(
                 ra[pzexcl[seeing]].size, ra[pzexcl[seeing]].size/ra.size))
-        good[seeing] = good[seeing] & goodpz
+        #good[seeing] = good[seeing] & goodpz
         # by passing the good subsamples here, I don't need to
         # take any subsamples of stars or galaxies since they are
         # already filtered
         stars[seeing] = \
-            match(cosmos[seeing]['ira'][good[seeing]],
+            match(args, cosmos[seeing]['ira'][good[seeing]],
                   cosmos[seeing]['idec'][good[seeing]], *hst_stars,
                   label='stars', seeing=seeing, maxdist=maxdist,
                   fig=fig, ax=ax)[2]
         galaxies[seeing] = \
-            match(cosmos[seeing]['ira'][good[seeing]],
+            match(args, cosmos[seeing]['ira'][good[seeing]],
                   cosmos[seeing]['idec'][good[seeing]], *hst_galaxies,
                   label='galaxies', seeing=seeing, maxdist=maxdist,
                   fig=fig, ax=ax)[2]
@@ -76,23 +80,21 @@ def main(maxdist=0.4*u.arcsec, photoz_code='mlz', plot_path='plots'):
     plottools.savefig(join(plot_path, 'hist_matches.pdf'), fig=fig)
     # save stars and galaxies to new catalogs
     for seeing in ('best', 'median', 'worst'):
-        store_sources(cosmos[seeing], good[seeing], stars[seeing], seeing,
-                      'stars')
-        store_sources(cosmos[seeing], good[seeing], galaxies[seeing], seeing,
-                      'galaxies')
+        store_sources(args, cosmos[seeing], good[seeing], stars[seeing],
+                      seeing, 'stars')
+        store_sources(args, cosmos[seeing], good[seeing], galaxies[seeing],
+                      seeing, 'galaxies')
 
     ## what objects are the photo-z codes throwing away?
-    plot_photoz_masked(
-        cosmos, good, pzexcl, stars, galaxies, plot_path=plot_path,
-        photoz_code=photoz_code)
+    #plot_photoz_masked(
+        #args, cosmos, photoz, good, pzexcl, stars, galaxies,
+        #plot_path=plot_path)
 
     ## calculate and plot purity
     contam = contamination(
-        cosmos, good, stars, galaxies, plot_path=plot_path,
-        photoz_code=photoz_code)
+        args, cosmos, good, stars, galaxies, plot_path=plot_path)
     contam_photoz = contamination_photoz(
-        cosmos, photoz, good, stars, galaxies, photoz_code=photoz_code,
-        plot_path=plot_path)
+        args, cosmos, photoz, good, stars, galaxies, plot_path=plot_path)
 
     ## plot distributions of stars vs. galaxies
     keys = ('iblendedness_abs_flux', 'ishape_hsm_regauss_e1',
@@ -100,13 +102,14 @@ def main(maxdist=0.4*u.arcsec, photoz_code='mlz', plot_path='plots'):
     keybins = (linspace(0, 0.45, 51), linspace(-2.1, 2.1, 51),
                linspace(-2.1, 2.1, 51), linspace(0.3, 1.1, 51))
     for key, bins in izip(keys, keybins):
-        histogram(cosmos, good, stars, galaxies, key, bins=bins,
+        histogram(args, cosmos, good, stars, galaxies, key, bins=bins,
                   plot_path=plot_path)
     return
 
 
-def contamination(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
-                  show_weights=False, show_errors=True, photoz_code='mlz'):
+def contamination(
+        args, cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
+        show_weights=False, show_errors=True, ext='eps'):
     """
     Calculate and plot the contamination (that is, the fraction of
     stars in the galaxy catalog) as a function of magnitude.
@@ -129,31 +132,37 @@ def contamination(cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
         imag = cosmos[key]['imag_forced_cmodel']
         # pass these weights to plot() if I want to show them
         weight = 1 / (cosmos[key]['ishape_hsm_regauss_sigma']**2 + rms**2)
-        contam[key] = plot(ax, key, imag, stars[key], galaxies[key],
-                           mag, magbins, color=color, dx=0.06*(i-1))
+        contam[key] = plot(
+            args, ax, key, imag, stars[key], galaxies[key], mag, magbins,
+            weight=weight, color=color, dx=0.06*(i-1))
         nhist = hax.hist(imag, magbins, histtype='step',
-                        lw=2, color=color, log=True, bottom=1)[0]
+                         lw=2, color=color, log=True, bottom=1)[0]
     ax.legend(loc='upper center', fontsize=20)
     # ticks and so on
-    ax.set_ylim(-0.0005, 0.005)
     for i in (ax, hax):
         i.set_xlim(16.6, 25.4)
         i.xaxis.set_major_locator(ticker.MultipleLocator(2))
         i.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
-    ax.yaxis.set_major_locator(ticker.MultipleLocator(0.001))
-    ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.00025))
+    #ax.set_ylim(-0.0005, 0.005)
+    ax.set_ylim(-0.001, 0.02)
+    #yticks = (0.001, 0.00025)
+    yticks = (0.005, 0.001)
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(yticks[0]))
+    ax.yaxis.set_minor_locator(ticker.MultipleLocator(yticks[1]))
     hax.yaxis.set_major_formatter(ticker.FormatStrFormatter('$%d$'))
     ax.set_ylabel('stellar contamination')
     hax.set_xlabel('i-band magnitude')
     hax.set_ylabel('1+N')
-    output = join(plot_path, 'purity_{0}.pdf'.format(photoz_code))
-    plottools.savefig(
-        output, fig=fig, tight_kwargs={'pad': 0.4, 'h_pad': 0.25})
+    output = join(plot_path, 'purity_{0}'.format(args.pzcode))
+    if args.weighted:
+        output = '{0}_weighted'.format(output)
+    plottools.savefig('{0}.{1}'.format(output, ext),
+                      fig=fig, tight_kwargs={'pad': 0.4, 'h_pad': 0.25})
     return contam
 
 
 def contamination_photoz(
-        cosmos, photoz, good, stars, galaxies, rms=0.37, photoz_code='mlz',
+        args, cosmos, photoz, good, stars, galaxies, rms=0.37,
         plot_path='plots', show_weights=False, show_errors=True):
     """
     In this function we calculate the contamination as a function of
@@ -178,7 +187,7 @@ def contamination_photoz(
         #print('\n ** {0} **'.format(key))
         color = 'C{0}'.format(k)
         #imag = cosmos[key]['imag_forced_cmodel'][good[key]]
-        zb = photoz[key]['PHOTOZ_BEST'][good[key]]
+        zb = photoz[key]['PHOTOZ_MC'][good[key]]
         #print('zb = [{0},{1}]'.format(zb.min(), zb.max()))
         # in case I want to show weights instead of numbers
         sigma = cosmos[key]['ishape_hsm_regauss_sigma'][good[key]]
@@ -212,13 +221,13 @@ def contamination_photoz(
     ax.set_ylabel(r'$[N_\mathrm{stars}/N](z_\mathrm{B}>z)$')
     hax.set_xlabel('$z$')
     hax.set_ylabel(r'$1+N(z_\mathrm{B}>z)$')
-    output = join(plot_path, 'purity_photoz_{0}.pdf'.format(photoz_code))
+    output = join(plot_path, 'purity_photoz_{0}.pdf'.format(args.pzcode))
     plottools.savefig(
         output, fig=fig, tight_kwargs={'pad': 0.4, 'h_pad': 0.25})
     return contam
 
 
-def cosmos_hsc(seeing, with_cuts=True, path='../catalogs/COSMOS',
+def cosmos_hsc(args, seeing, with_cuts=True, path='../catalogs/COSMOS',
                filename='COSMOS_wide_{0}_v3_withwlcuts.fits',
                print_columns=False):
     filename = join(path, filename.format(seeing))
@@ -241,7 +250,8 @@ def cosmos_hsc(seeing, with_cuts=True, path='../catalogs/COSMOS',
     return cat, sources
 
 
-def histogram(cosmos, good, stars, galaxies, key, bins=50, plot_path='plots'):
+def histogram(args, cosmos, good, stars, galaxies, key, bins=50,
+              plot_path='plots'):
     hist_path = join(plot_path, 'histograms')
     if not isdir(hist_path):
         makedirs(hist_path)
@@ -276,15 +286,16 @@ def histogram(cosmos, good, stars, galaxies, key, bins=50, plot_path='plots'):
     return
 
 
-def load_photoz(seeing, code='mlz'):
+def load_photoz(args, seeing):
     filename = 'COSMOS_wide_{0}_v3_withwlcuts_pz_{1}.fits'.format(
-        seeing, code)
+        seeing, args.pzcode)
     filename = join('..', 'catalogs', 'COSMOS', filename)
     photoz = fits.getdata(filename)
-    return photoz
+    goodpz = numpy.isfinite(photoz['PHOTOZ_MC'])
+    return photoz, goodpz
 
 
-def match(ra, dec, ra_hst, dec_hst, label='stars', seeing='median',
+def match(args, ra, dec, ra_hst, dec_hst, label='stars', seeing='median',
           maxdist=0.4*u.arcsec, fig=None, ax=None, save=False,
           plot_path='plots'):
     print('Matching {0} sources to {1} {2} with {3} seeing'.format(
@@ -305,34 +316,32 @@ def match(ra, dec, ra_hst, dec_hst, label='stars', seeing='median',
     return fig, ax, indices
 
 
-def plot(ax, key, data, stars, galaxies, mag, magbins, color='C0',
+def plot(args, ax, key, data, stars, galaxies, mag, magbins, color='C0',
          dx=0, weight=[], show_errors=True):
     # overall ratios
     overall = data[stars].size/data.size
     ax.axhline(overall, ls=':', lw=1, color=color)
     print('Overall purity for {0} seeing is {1:.4f}'.format(
             key, overall))
-    # binned fractions
-    # uncomment these two (and comment fhe next two) instructions
-    # to show the numerators instead of the denominators in the
-    # bottom panel
-    ntot = numpy.histogram(data, magbins)[0]
-    #nstars = hax.hist(data[stars[key]], magbins, histtype='step',
-                      #lw=2, color=color, log=True, bottom=1)[0]
-    nstars = numpy.histogram(data[stars], magbins)[0]
-    ngals = numpy.histogram(data[galaxies], magbins)[0]
-    if len(weight) > 0:
-        label = '{0}-n'.format(key.capitalize())
+    label = key.capitalize()
+    if args.weighted and len(weight) > 0:
+        ntot = numpy.histogram(data, magbins, weights=weight)[0]
+        nstars = numpy.histogram(
+            data[stars], magbins, weights=weight[stars])[0]
+        ngals = numpy.histogram(
+            data[galaxies], magbins, weights=weight[galaxies])[0]
     else:
-        label = key.capitalize()
+        ntot = numpy.histogram(data, magbins)[0]
+        nstars = numpy.histogram(data[stars], magbins)[0]
+        ngals = numpy.histogram(data[galaxies], magbins)[0]
     # Poisson errorbars
     err = nstars/ntot * (1/nstars + 1/ntot)**0.5
     if show_errors:
         j = (nstars > 0)
-        #ax.errorbar(dx+mag[j], (nstars/ntot)[j], yerr=err[j], fmt='-',
-                    #color=color, mew=2, capsize=0)
-        ax.errorbar(dx+mag, nstars/ntot, yerr=err, fmt='-', color=color,
-                    mew=2, capsize=0)
+        ax.errorbar(dx+mag[j], (nstars/ntot)[j], yerr=err[j], fmt='-',
+                    color=color, mew=2, capsize=0)
+        #ax.errorbar(dx+mag, nstars/ntot, yerr=err, fmt='-', color=color,
+                    #mew=2, capsize=0)
         ax.plot([], [], '-', color=color, label=label)
     else:
         ax.plot(mag[nstars > 0], (nstars/ntot)[nstars > 0],
@@ -340,27 +349,22 @@ def plot(ax, key, data, stars, galaxies, mag, magbins, color='C0',
     nostars = (nstars == 0)
     err[nostars] = 1 / ntot[nostars]**0.5
     err[~numpy.isfinite(err)] = 0
-    #ax.plot(mag, ngals/ntot, '--', label='{0} galaxies'.format(key))
-    # now weighted fractions
-    if len(weight) > 0:
-        wtot = numpy.histogram(data, magbins, weights=weight)[0]
-        wstars = numpy.histogram(
-            data[stars], magbins, weights=weight[stars])[0]
-        wgals = numpy.histogram(
-            data[galaxies], magbins, weights=weight[galaxies])[0]
-        ax.plot(mag, wstars/wtot, '--', color=color,
-                label=label.replace('-n', '-w'))
     return nstars/ntot, err
 
 
-def plot_photoz_masked(
-        cosmos, good, pzexcl, stars, galaxies, plot_path='plots',
-        photoz_code='mlz'):
+def plot_photoz_masked(args, cosmos, photoz, good, pzexcl, stars, galaxies,
+                       plot_path='plots'):
     if not isdir(plot_path):
        makedirs(plot_path)
+    # for the contamination
     bins = numpy.linspace(16, 25, 21)
     x = (bins[:-1]+bins[1:]) / 2
     fig, ax = pylab.subplots()
+    # for n(z)
+    nzbins = numpy.arange(0, 5, 0.1)
+    znz = (nzbins[:-1]+nzbins[1:]) / 2
+    nzmagbins = numpy.arange(17, 25.1, 2)
+    fignz, axnz = pylab.subplots()
     for i, seeing in enumerate(('best', 'median', 'worst')):
         color = 'C{0}'.format(i)
         imag = cosmos[seeing]['imag_forced_cmodel']
@@ -370,9 +374,30 @@ def plot_photoz_masked(
         # the current catalogs already have the WL cuts applied
         # so `good` doesn't do anything, except it includes the photo-z
         # mask
-        n = numpy.histogram(imag, bins)[0]
-        nz = numpy.histogram(imag[pzexcl[seeing]], bins)[0]
-        ax.plot(x, nz/n, '-', color=color, label=seeing.capitalize())
+        nmag = numpy.histogram(imag, bins)[0]
+        nmag_with_z = numpy.histogram(imag[pzexcl[seeing]], bins)[0]
+        ax.plot(x, nmag_with_z/nmag, '-', color=color,
+                label=seeing.capitalize())
+        # plot n(z)
+        zo = photoz[seeing]['PHOTOZ_MC']
+        goodz = numpy.isfinite(zo)
+        zo = zo[goodz]
+        nz = numpy.histogram(zo, nzbins)[0]
+        axnz.plot(znz, nz/nz.sum(), '-', lw=3, color=color,
+                  label=seeing.capitalize())
+        if seeing != 'median':
+            continue
+        print('photoz = {0}'.format(photoz[seeing].names))
+        for j in xrange(1, nzmagbins.size):
+            inbinj = (imag[goodz] > nzmagbins[j-1]) & \
+                     (imag[goodz] <= nzmagbins[j])
+            nzj = numpy.histogram(zo[inbinj], nzbins)[0]
+            #color = 'C{0}'.format(j+3),
+            color = '{0:.2f}'.format(1-j/nzmagbins.size)
+            axnz.plot(znz, nzj/nzj.sum(), '-', lw=2, color=color, zorder=3+j,
+                      label=r'${0} < m_\mathrm{{i}} \leq {1}$'.format(
+                            nzmagbins[j-1], nzmagbins[j]))
+    # beautify and save the contamination plot
     ax.legend(loc='upper center', fontsize=20)
     ax.xaxis.set_major_locator(ticker.MultipleLocator(2))
     ax.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
@@ -380,12 +405,21 @@ def plot_photoz_masked(
     ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.05))
     ax.set_xlabel('i-band magnitude')
     ax.set_ylabel('fraction with invalid photo-z')
-    output = join(plot_path, 'pzexcluded_{0}.pdf'.format(photoz_code))
+    output = join(plot_path, 'pzexcluded_{0}.pdf'.format(args.pzcode))
     plottools.savefig(output, fig=fig)
+    # beautify and save the n(z) plot
+    axnz.legend(loc='upper right', fontsize=18)
+    axnz.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    axnz.xaxis.set_minor_locator(ticker.MultipleLocator(0.2))
+    axnz.set_xlabel('$z$')
+    axnz.set_ylabel(r'$n(z_\mathrm{MC})$')
+    output = join(plot_path, 'nz_{0}.pdf'.format(args.pzcode))
+    plottools.savefig(output, fig=fignz)
     return
 
 
-def store_sources(cosmos, good, sources, seeing, label, output_path='output'):
+def store_sources(args, cosmos, good, sources, seeing, label,
+                  output_path='output'):
     if not isdir(output_path):
         makedirs(output_path)
     data = [sources]
@@ -395,6 +429,17 @@ def store_sources(cosmos, good, sources, seeing, label, output_path='output'):
     numpy.savetxt(join(output_path, '{0}_{1}.cat'.format(label, seeing)),
                   data.T, header=hdr, fmt='%6d %10.5f %8.5f %7.3f')
     return
+
+
+def read_args():
+    parser = argparse.ArgumentParser()
+    add = parser.add_argument
+    # mandatory
+    add('pzcode', choices=('ephor','mizuki','mlz'))
+    # optional
+    add('-w', dest='weighted', action='store_true')
+    args = parser.parse_args()
+    return args
 
 
 main()
