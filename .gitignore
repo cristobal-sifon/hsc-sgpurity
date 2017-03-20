@@ -1,4 +1,5 @@
 *~
+*.eps
 *.pyc
 *.save
 input/

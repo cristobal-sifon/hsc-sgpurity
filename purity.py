@@ -109,7 +109,7 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
 
 def contamination(
         args, cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
-        show_weights=False, show_errors=True, ext='eps'):
+        show_weights=False, show_errors=True):
     """
     Calculate and plot the contamination (that is, the fraction of
     stars in the galaxy catalog) as a function of magnitude.
@@ -156,8 +156,10 @@ def contamination(
     output = join(plot_path, 'purity_{0}'.format(args.pzcode))
     if args.weighted:
         output = '{0}_weighted'.format(output)
-    plottools.savefig('{0}.{1}'.format(output, ext),
-                      fig=fig, tight_kwargs={'pad': 0.4, 'h_pad': 0.25})
+    for ext in ('eps', 'pdf'):
+        plottools.savefig(
+            '{0}.{1}'.format(output, ext),
+            fig=fig, tight_kwargs={'pad': 0.4, 'h_pad': 0.25})
     return contam
 
 
