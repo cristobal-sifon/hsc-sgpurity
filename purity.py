@@ -108,35 +108,58 @@ def main(maxdist=0.4*u.arcsec, plot_path='plots'):
 
 
 def contamination(
-        args, cosmos, good, stars, galaxies, rms=0.37, plot_path='plots',
-        show_weights=False, show_errors=True):
+        args, cosmos, good, stars, galaxies, rms=0.37, path='output',
+        plot_path='plots', show_weights=False, show_errors=True):
     """
     Calculate and plot the contamination (that is, the fraction of
     stars in the galaxy catalog) as a function of magnitude.
     The first four arguments are dictionaries with seeing as keys
 
     """
+    # bin by magnitude
     magbins = arange(16.6, 26, 0.6)
     mag = (magbins[:-1]+magbins[1:]) / 2
     keys = ('best', 'median', 'worst')
-    # bin by magnitude
+    # output file
+    if not isdir(path):
+        makedirs(path)
+    output = join(path, 'contamination_{0}.txt'.format(args.pzcode))
+    if args.weighted:
+        output = output.replace('.txt', '_weighted.txt')
+    out = open(output, 'w')
+    print('# Output from purity.contamination(). Columns are:\n' \
+              '# (1) seeing; (2) overall contamination; (3) contamination\n' \
+              '# in each magnitude bin; (4) uncertainty in each bin.\n' \
+              '# The central values of each magnitude bin are:\n' \
+              '# ",".join(["{0:.3f}".format(i) for i in mag])\n' \
+              '# so that there are {1} values for the contamination\n'
+              '# followed by {1} uncertainties.\n#'.format(mag, mag.size),
+          file=out)
+    # plot figure
     fig = pylab.figure(figsize=(7,7))
     ax = pylab.subplot2grid((4,1), (0,0), rowspan=3)
     ax.set_xticklabels([])
     # axis for histograms
     hax = pylab.subplot2grid((4,1), (3,0))
     # main lines
+    avg = {}
     contam = {}
     for i, key in enumerate(keys):
         color = 'C{0}'.format(i)
         imag = cosmos[key]['imag_forced_cmodel']
         # pass these weights to plot() if I want to show them
         weight = 1 / (cosmos[key]['ishape_hsm_regauss_sigma']**2 + rms**2)
-        contam[key] = plot(
+        avg[key], contam[key] = plot(
             args, ax, key, imag, stars[key], galaxies[key], mag, magbins,
             weight=weight, color=color, dx=0.06*(i-1))
         nhist = hax.hist(imag, magbins, histtype='step',
                          lw=2, color=color, log=True, bottom=1)[0]
+        print('{0}  {1:.4e}  {2}  {3}'.format(
+                  key, avg[key],
+                  '  '.join(['{0:.3e}'.format(c) for c in contam[key][0]]),
+                  '  '.join(['{0:.3e}'.format(c) for c in contam[key][1]])),
+              file=out)
+    out.close()
     ax.legend(loc='upper center', fontsize=20)
     # ticks and so on
     for i in (ax, hax):
@@ -351,7 +374,7 @@ def plot(args, ax, key, data, stars, galaxies, mag, magbins, color='C0',
     nostars = (nstars == 0)
     err[nostars] = 1 / ntot[nostars]**0.5
     err[~numpy.isfinite(err)] = 0
-    return nstars/ntot, err
+    return overall, nstars/ntot, err
 
 
 def plot_photoz_masked(args, cosmos, photoz, good, pzexcl, stars, galaxies,
